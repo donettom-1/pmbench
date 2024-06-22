@@ -36,8 +36,11 @@
 #include <inttypes.h>
 #include "access.h"
 #include "pattern.h"
-
+#ifdef PPC
+#define PAGE_SHIFT (16)
+#else
 #define PAGE_SHIFT (12)
+#endif
 #define PAGE_SIZE (1<<PAGE_SHIFT)
 
 #ifdef _WIN32

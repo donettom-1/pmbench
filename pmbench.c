@@ -60,7 +60,11 @@
 #endif
 
 #include "system.h"
+#ifdef PPC
+#include "ppctb.h"
+#else
 #include "rdtsc.h"
+#endif
 #include "cpuid.h"
 #include "pattern.h"
 #include "access.h"
@@ -119,7 +123,11 @@ void set_default_params(parameters* p)
     p->delay = 0;	    // no delay
     p->quiet = 0;
     p->cold = 0;
+#ifdef PPC
+    p->tsops = &ppc_ops;
+#else
     p->tsops = &rdtscp_ops;
+#endif
     p->jobs = 1;
     p->init_garbage = 0;
     p->threshold = 0;
@@ -235,12 +243,16 @@ error_t parse_opt(int key, char* arg, struct argp_state* state)
 	}
 	break;
     case 't':
+#ifdef PPC
+	printf("option not supported.\n");
+#else
 	param->tsops = get_timestamp_from_name(arg);
 	if (!param->tsops) {
 		printf("timestamp name unrecognized.\n");
 		param->tsops = &rdtsc_ops;
 		return ARGP_ERR_UNKNOWN;
 	}
+#endif
 	break;
     case 'd':
 	if (arg) param->delay = atoi(arg);
@@ -704,13 +716,16 @@ void* main_bm_thread(void* arg)
      * using long for holding page count doesn't work. On the other hand
      * using long long type makes life difficult when compiling 32bit.
      */
-
+#ifdef PPC
+    size_t num_pages = p->setsize_mib * 16;
+#else
     size_t num_pages = p->setsize_mib * 256;
+#endif
     size_t iter_warmup;
     int iter_patternlap = 1000000; // draw 1000000
     void* ctx = pattern->alloc_pattern(num_pages, p->shape, tinfo->thread_num);
 
-    prn("[%d] num_pages: %ld (%ld MiB), shape: %0.4f\n", tinfo->thread_num, num_pages, num_pages/256, p->shape);
+    prn("[%d] num_pages: %ld (%ld MiB), shape: %0.4f\n", tinfo->thread_num, num_pages, p->setsize_mib, p->shape);
     sw_reset(&sw, tsops);
 
     /* do measure pattern generation overhead */
@@ -1080,7 +1095,7 @@ int main(int argc, char** argv)
     disable_core_dump();
 
 //test_parse_numa_option();
-
+#ifndef PPC
     if (!is_tsc_invariant()) {
 	prn("WARNING: CPU does not support constant-rate rdtsc. Results obtained via rdtsc(p) may be inaccurate!\n");
     }
@@ -1088,6 +1103,7 @@ int main(int argc, char** argv)
     	prn("INFO: specified rdtscp, which is unsupported by the CPU. Using rdtsc instead.\n");
     	params.tsops = &rdtsc_ops;
     }
+#endif
 #ifdef WIN32
     {
     	SYSTEM_INFO sysinfo;
@@ -1099,17 +1115,24 @@ int main(int argc, char** argv)
     }
     perfc_ops.init_base_freq(&perfc_ops);
 #else
+#ifndef PPC
     if (sysconf(_SC_PAGESIZE) != 4096) {
 	prn("ERROR: system page size is not 4K.\n");
     	return 1;
     }
 #endif
+#endif
+#ifdef PPC
+    ppc_ops.init_base_freq(&ppc_ops);
+    map_num_pfn = params.mapsize_mib * 16;
+
+#else
     rdtsc_ops.init_base_freq(&rdtsc_ops);
     rdtscp_ops.init_base_freq(&rdtscp_ops);
-
+    map_num_pfn = params.mapsize_mib * 256;
+#endif
     freq_khz = params.tsops->base_freq_khz;
 
-    map_num_pfn = params.mapsize_mib * 256;
 
 #ifdef XALLOC
     if (params.xalloc_mib) {

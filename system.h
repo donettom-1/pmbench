@@ -45,7 +45,11 @@
 #include <windows.h>
 #include <inttypes.h>
 #include <unistd.h>
+#ifdef PPC
+#include "ppctb.h"
+#else
 #include "rdtsc.h"
+#endif
 
 #else
 
@@ -62,7 +66,11 @@
 #include <sched.h>
 #endif
 
+#ifdef PPC
+#include "ppctb.h"
+#else
 #include "rdtsc.h"
+#endif
 
 #endif // !_WIN32
 
@@ -74,14 +82,27 @@
 /* TODO: inline random() and other C functions used in generator 
  * currently they are called via plt table
  * */
-
+#ifdef PPC
+#define PAGE_SHIFT (16)
+#else
 #define PAGE_SHIFT (12)
+#endif
 #define PAGE_SIZE (1<<PAGE_SHIFT)
 
 /* find last (MSB) set bit. e.g., flsl(0) = 0, flsl(1) = 1, 
  * flsl(2) = 2, flsl(3) = 2, flsl(4) = 3, flsl(5) = 3,
  * flsl(15) = 4, flsl(16) = 5, flsl(17) = 5 ... */
 #if defined(_WIN32) && defined(__MSVC__)
+static inline int __my_flsl(uint32_t x)
+{
+    uint32_t r = 0;
+
+    while (x >>= 1) r++;
+
+    return r;
+}
+#else
+#ifdef PPC
 static inline int __my_flsl(uint32_t x)
 {
     uint32_t r = 0;
@@ -101,14 +122,20 @@ static inline int __my_flsl(uint32_t x)
     return ret + 1;
 }
 #endif
+#endif
 
 static inline int ilog2(uint32_t x) {
     return __my_flsl(x) - 1;
 }
 
+#ifdef PPC
+static inline void __pause(void) {
+	__asm__ __volatile__("nop");}
+#else
 static inline void __pause(void) {
     asm volatile ( "pause\n" );
 }
+#endif
 
 /*
  * returns 0 if it didn't have to enter pause loop
@@ -117,10 +144,19 @@ static inline void __pause(void) {
 static inline
 uint64_t sys_delay(int min_clk)
 {
-    uint64_t count = 0, past = rdtsc();
+    uint64_t count = 0;
+#ifdef PPC
+    uint64_t past = get_time_base();
+#else
+    uint64_t past = rdtsc();
+#endif
 
     while (1) {
+#ifdef PPC
+	if ((get_time_base() - past) > min_clk) return count;
+#else
 	if ((rdtsc() - past) > min_clk) return count;
+#endif
 	count++;
 	__pause();
     }
@@ -211,8 +247,12 @@ uint32_t sw_get_usec(const struct stopwatch* sw) {
 	return (uint32_t)((sw->elapsed_sum * 1000)/sw->ops->base_freq_khz); 
 }
 
+#ifdef PPC
+extern struct sys_timestamp ppc_ops;
+#else
 extern struct sys_timestamp rdtsc_ops;
 extern struct sys_timestamp rdtscp_ops;
+#endif
 #ifdef _WIN32
 extern struct sys_timestamp perfc_ops;
 #endif

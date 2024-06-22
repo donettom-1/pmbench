@@ -37,7 +37,11 @@
 #include <inttypes.h>
 
 #include "system.h"
+#ifdef PPC
+#include "ppctb.h"
+#else
 #include "rdtsc.h"
+#endif
 #include "pattern.h"
 
 

@@ -55,7 +55,11 @@
 
 #include "system.h"
 
+#ifdef PPC
+#include "ppctb.h"
+#else
 #include "rdtsc.h"
+#endif
 #include "cpuid.h"
 #include "pattern.h"
 #include "pmbench.h"
@@ -74,8 +78,7 @@ static struct cpuid_struct _cpuid = {
     .leaf_pop = 0u,
     .leaf_ex_pop = 0u,
 };
-
-
+#ifndef PPC
 static
 void cpuid_populate_local_leaf(uint32_t idx)
 {
@@ -88,7 +91,15 @@ void cpuid_populate_local_leaf(uint32_t idx)
     _sys_cpuid(&r[A], &r[B], &r[C], &r[D]);
     _cpuid.leaf_pop |= (1u << idx);
 }
+#endif
 
+#ifdef PPC
+static inline
+int is_leaf_supported_idx(uint32_t idx)
+{
+	return 0;
+}
+#else
 static inline
 int is_leaf_supported_idx(uint32_t idx)
 {
@@ -101,7 +112,9 @@ int is_leaf_supported_idx(uint32_t idx)
 
     return 1;
 }
+#endif
 
+#ifndef PPC
 static
 void cpuid_populate_local_leaf_ex(uint32_t idx)
 {
@@ -113,10 +126,12 @@ void cpuid_populate_local_leaf_ex(uint32_t idx)
     _sys_cpuid(&r[A], &r[B], &r[C], &r[D]);
     _cpuid.leaf_ex_pop |= (1u << (idx & 0x0f));
 }
+#endif
 
 /*
  * ex_idx can be specified either as 0x800000idx or idx
  */
+#ifndef PPC
 static
 int is_leaf_ex_supported_idx(uint32_t ex_idx)
 {
@@ -130,9 +145,14 @@ int is_leaf_ex_supported_idx(uint32_t ex_idx)
 
     return 1;
 }
-
+#endif
 /****************************/
-
+#ifdef PPC
+int is_rdtscp_available(void)
+{
+	return 0;
+}
+#else
 int is_rdtscp_available(void)
 {
     if (!is_leaf_ex_supported_idx(1)) return 0;
@@ -145,7 +165,13 @@ int is_rdtscp_available(void)
     if (_cpuid.leaf_ex[1].r[3] & (1u << 27)) return 1;
     return 0;
 }
-
+#endif
+#ifdef PPC
+int is_tsc_invariant(void)
+{
+	return 0;
+}
+#else
 int is_tsc_invariant(void)
 {
     if (!is_leaf_ex_supported_idx(7)) return 0;
@@ -157,12 +183,19 @@ int is_tsc_invariant(void)
     if (_cpuid.leaf_ex[7].r[3] & 0x100) return 1;
     return 0;
 }
+#endif
 
 /* 
  * when detected, returns string length, including the null character.
  * This functions strips away the leading white spaces.
  * returns 0 when string is unsupported.
  */
+#ifdef PPC
+int __cpuid_obtain_brand_string(char* buf)
+{
+	return 0;
+}
+#else
 int __cpuid_obtain_brand_string(char* buf)
 {
     char* src, *buf_start = buf;
@@ -187,8 +220,16 @@ int __cpuid_obtain_brand_string(char* buf)
     while ((*buf++ = *src++) != 0);
     return (int)(buf - buf_start);
 }
+#endif
 
 /* @output must be at least 16 bytes long */
+#ifdef PPC
+static inline
+int __cpuid_cache_tlb_info(uint8_t *output)
+{
+	return 0;
+}
+#else
 static inline 
 int __cpuid_cache_tlb_info(uint8_t *output)
 {
@@ -216,6 +257,7 @@ int __cpuid_cache_tlb_info(uint8_t *output)
     } while (1);
     return (int)(output - save);
 }
+#endif
 
 /* these are not zero-based values */
 struct cpu_cache_info {
@@ -241,6 +283,13 @@ struct cpu_cache_info_ebx_encode {
  * structured cache info (EAX=0x04) 
  * returns cache items + 1
  */
+#ifdef PPC
+static inline
+int __cpuid_deterministic_cache_info(struct cpu_cache_info* output, int size)
+{
+	return 0;
+}
+#else
 static inline
 int __cpuid_deterministic_cache_info(struct cpu_cache_info* output, int size)
 {
@@ -264,12 +313,17 @@ int __cpuid_deterministic_cache_info(struct cpu_cache_info* output, int size)
     }
     return item;
 }
-
+#endif
 
 /*****************************************************/
 uint8_t tlb_info_buf[16];
 int gl_tlb_info_buf_len;
-
+#ifdef PPC
+int print_tlb_info()
+{
+	return 0;
+}
+#else
 int print_tlb_info()
 {
     int i, len = __cpuid_cache_tlb_info(tlb_info_buf);
@@ -283,6 +337,7 @@ int print_tlb_info()
     gl_tlb_info_buf_len = len;
     return len;
 }
+#endif
 
 uint8_t get_tlb_info(int i)
 {
@@ -291,7 +346,12 @@ uint8_t get_tlb_info(int i)
 
 struct cpu_cache_info cash[8];
 int gl_det_cache_info_len;
-
+#ifdef PPC
+int print_cache_info(void)
+{
+	return 0;
+}
+#else
 int print_cache_info(void)
 {
     unsigned char buf[16];
@@ -337,7 +397,7 @@ int print_cache_info(void)
     gl_det_cache_info_len = len;
     return len;
 }
-
+#endif
 char* get_cache_type(int i)
 {
     switch (cash[i].cachetype) {
@@ -368,6 +428,7 @@ int get_cache_info(int i, int m)
 /*
  * returns -1 if cpu model not found
  */
+#ifndef PPC
 static 
 uint32_t cpuid_cpu_model(uint32_t* out_fam)
 {
@@ -407,7 +468,7 @@ uint32_t cpuid_cpu_model(uint32_t* out_fam)
     if (out_fam) *out_fam = family;
     return model;
 }
-
+#endif
 static inline
 uint32_t calculate_cpuid_freq(uint32_t a, uint32_t b, uint32_t c) {
     uint64_t val = (uint64_t)c * b / a / 1000;  /* report in KHz */
@@ -418,6 +479,13 @@ uint32_t calculate_cpuid_freq(uint32_t a, uint32_t b, uint32_t c) {
  * returns cpuid-reported nominal time stamp counter frequency in KHz
  * returns 0 if unavailable
  */
+#ifdef PPC
+static
+uint32_t get_tsc_freq_from_cpuid(void)
+{
+	return 0;
+}
+#else
 static 
 uint32_t get_tsc_freq_from_cpuid(void)
 {
@@ -468,6 +536,7 @@ uint32_t get_tsc_freq_from_cpuid(void)
     }
     return 0;
 }
+#endif
 
 /*
  * returns rdtsc frequency in KHz using MSR_PLATFORM_INFO[15:8] value
@@ -485,6 +554,13 @@ uint32_t get_tsc_freq_from_msr(void)
 /*
  * process must have read privilege on /dev/cpu/0/msr.
  */
+#ifdef PPC
+static
+uint32_t get_tsc_freq_from_msr(void)
+{
+	return 0;
+}
+#else
 static 
 uint32_t get_tsc_freq_from_msr(void)
 {
@@ -527,10 +603,18 @@ uint32_t get_tsc_freq_from_msr(void)
     return 0;
 }
 #endif
+#endif
 
 /*
  * obtain frequency rating from brand string prescribed by CPUID SDM
  */
+#ifdef PPC
+static
+uint32_t get_tsc_freq_from_brandstring(void)
+{
+	return 0;
+}
+#else
 static
 uint32_t get_tsc_freq_from_brandstring(void)
 {
@@ -568,8 +652,9 @@ extract_number:
     }
     return 0;
 }
+#endif
 
-/* 
+/* #endif
  * returns frequency in KHz
  * methodology: time usleep duration with rdtsc.
  * we're relying on the CPU has constant rate timestamp counter. most modern
@@ -586,18 +671,34 @@ uint32_t measure_rdtsc_frequency(void)
     uint64_t tscA, tscB, y1, y2, offset;
     uint32_t ret, rdtsc_freq_measured;
     static const int x1 = 128, x2 = 256; // ~ms
+#ifdef PPC
+    tscA = get_time_base();
+#else
     tscA = rdtsc();
+#endif
     ret = usleep(x1*1024);
+#ifdef PPC
+    tscB = get_time_base();
+#else
     tscB = rdtsc();
+#endif
     if (ret) {
 	printf("CPU frequency detection failed (sleep) Bailing out\n");
 	return 0;
     }
     y1 = tscB - tscA;
     rdtsc_freq_measured = (uint32_t)((y1*1000ull)/(x1*1024));
+#ifdef PPC
+    tscA = get_time_base();
+#else
     tscA = rdtsc();
+#endif
     ret = usleep(x2*1024);
+#ifdef PPC
+    tscB = get_time_base();
+#else
     tscB = rdtsc();
+#endif
     if (ret) {
 	printf("CPU frequency detection failed (sleep) Bailing out\n");
 	return 0;
@@ -672,9 +773,14 @@ uint32_t get_cycle_freq_fallback(void)
 	return 0;
     }
     fread(buf, 512, 1, fp);
-
+#ifdef PPC
+    cursor = strstr(buf, "clock");
+    cursor += 9;
+    *(cursor + 11) = '\n';
+#else
     cursor = strstr(buf, "cpu MHz");
     cursor += 11; // consume "cpu MHz \t: "
+#endif
     sscanf(cursor, "%f", &cpumhz);
     cpu_freq_reported = (uint32_t)(cpumhz * 1000.0f);
 
@@ -738,10 +844,39 @@ uint32_t get_cycle_freq(void)
     if (freq_khz) {
 	if (validate_freq(freq_khz)) return freq_khz;
     }
-
     return get_cycle_freq_fallback();
 }
+#ifdef PPC
 
+static
+_code
+uint64_t _ops_ppc(void)
+{
+    return get_time_base();
+}
+
+/*
+ * returns 0 upon success, non zero upon failure
+ */
+int _ops_ppc_init_base_freq(struct sys_timestamp* sts)
+{
+    //uint32_t freq_khz = measure_rdtsc_frequency();
+    uint32_t freq_khz = get_cycle_freq();
+    if (!freq_khz) return -1;
+    sts->base_freq_khz = freq_khz;
+    return 0;
+}
+
+/* timestamp measure ppc */
+struct sys_timestamp ppc_ops = {
+    .timestamp = _ops_ppc,
+    .init_base_freq = _ops_ppc_init_base_freq,
+    .base_freq_khz = 0,
+    .name = "ppctb",
+};
+
+
+#else
 static
 _code
 uint64_t _ops_rdtsc(void)
@@ -795,7 +930,7 @@ struct sys_timestamp rdtscp_ops = {
     .base_freq_khz = 0,
     .name = "rdtscp",
 };
-
+#endif
 #ifdef _WIN32
 uint64_t _ops_perfc(void)
 {
@@ -832,7 +967,11 @@ struct sys_timestamp perfc_ops = {
 #endif
 
 static struct sys_timestamp* all_sys_timestamp[] = {
+#ifdef PPC
+	&ppc_ops,
+#else
 	&rdtsc_ops, &rdtscp_ops, 
+#endif
 #ifdef _WIN32
 	&perfc_ops, 
 #endif
@@ -1558,4 +1697,21 @@ void sys_print_affinitysets(struct affy_node* head)
     }
 }
 #endif
+#endif
+
+#ifdef PPC
+// Function to get the full 64-bit time base value
+uint64_t get_time_base(void) {
+    uint32_t tbu, tbl;
+    uint64_t tb;
+
+    // Ensure a consistent read of TBU and TBL
+    do {
+        tbu = read_tbu();
+        tbl = read_tbl();
+    } while (tbu != read_tbu());
+
+    tb = ((uint64_t)tbu << 32) | tbl;
+    return tb;
+}
 #endif

@@ -34,7 +34,11 @@
 #include <string.h>
 #include <math.h>
 
+#ifdef PPC
+#include "ppctb.h"
+#else
 #include "rdtsc.h"
+#endif
 #include "system.h"
 #include "access.h"
 
@@ -106,6 +110,25 @@ struct histogram_64 {
 
 extern const struct sys_timestamp* get_tsops(void);
 
+#ifdef PPC
+static
+_code
+uint32_t measure_read(uint32_t *ptr)
+{
+    register uint32_t _val_sink;
+    struct stopwatch sw;
+    sw_reset(&sw, get_tsops());
+    sw_start(&sw);
+    //asm following implements: _val_sink = *ptr;
+    asm volatile (
+     "lwz %0, 0(%1)\n\t"
+      : "=r" (_val_sink)
+      : "r" (ptr)
+      : "memory" );
+    sw_stop(&sw);
+    return sw_get_nsec(&sw); //_val_sink;
+}
+#else
 static
 _code 
 uint32_t measure_read(uint32_t *ptr)
@@ -124,7 +147,30 @@ uint32_t measure_read(uint32_t *ptr)
     sw_stop(&sw);
     return sw_get_nsec(&sw); //_val_sink;
 }
+#endif
 
+#ifdef PPC
+static
+_code
+uint32_t measure_write(uint32_t *ptr)
+{
+    uint32_t val_to_write;
+    struct stopwatch sw;
+
+    val_to_write = (uint32_t)(uintptr_t)(ptr); // let's write the ptr value
+
+    sw_reset(&sw, get_tsops());
+    sw_start(&sw);
+    // asm following implements: *ptr = val_to_write;
+    asm volatile (
+		"stw %0, 0(%1)\n\t"
+		:
+		: "r" (val_to_write), "r" (ptr)
+		: "memory" );
+    sw_stop(&sw);
+    return sw_get_nsec(&sw);
+}
+#else
 static
 _code 
 uint32_t measure_write(uint32_t *ptr)
@@ -146,10 +192,35 @@ uint32_t measure_write(uint32_t *ptr)
     sw_stop(&sw);
     return sw_get_nsec(&sw);
 }
+#endif
 
 /*
  * this performs write after explicit read
  */
+#ifdef PPC
+static
+_code
+uint32_t measure_write_after_read(uint32_t *ptr)
+{
+    register uint32_t val = 0;
+    struct stopwatch sw;
+    sw_reset(&sw, get_tsops());
+    sw_start(&sw);
+    // asm following implements: *ptr = (*ptr);
+    asm volatile (
+		"lwz %0, 0(%1)\n\t"
+		"stw %0, 0(%1)\n\t"
+		: "=&r"(val)
+		: "r"(ptr)
+		: "memory"
+		);
+
+    sw_stop(&sw);
+
+    return sw_get_nsec(&sw);
+}
+
+#else
 static
 _code 
 uint32_t measure_write_after_read(uint32_t *ptr)
@@ -171,7 +242,7 @@ uint32_t measure_write_after_read(uint32_t *ptr)
 
     return sw_get_nsec(&sw);
 }
-
+#endif
 _code 
 uint32_t access_histogram(uint32_t *ptr, int is_write)
 {

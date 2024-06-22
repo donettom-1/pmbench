@@ -68,7 +68,8 @@ endif
 
 #LFLAGS_LINUX += -Wl,--section-start=.pmbench_code_page=408000
 # uncomment below to compile-in multi-threaded benchmark
-CFLAGS_LINUX += -DPMB_THREAD=1 -pthread
+#CFLAGS_LINUX += -DPMB_THREAD=1 -pthread
+CFLAGS_LINUX += -DPPC=1 -pthread
 LFLAGS_LINUX += -pthread
 # uncomment below to compile-in numa affinityset. Requires threading.
 #CFLAGS_LINUX += -DPMB_NUMA=1 
@@ -100,7 +101,8 @@ LXML := -lxml2
 
 .PHONY: all clean dist dist_src dist_bin dist_bin32 dist_bin64 dist_doc check help
 
-all: pmbench pmbench.exe
+all: pmbench
+#all: pmbench pmbench.exe
 
 pmbench: pmbench.o pattern.o system.o access.o xmlgen.o
 	$(CC) $+ -lm -luuid $(LXML) -o $@ $(LFLAGS_LINUX)
