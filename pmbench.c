@@ -40,6 +40,7 @@
 #include <stdarg.h>
 #include <inttypes.h>
 #include <fcntl.h>
+#include <numaif.h>
 
 
 #ifdef _WIN32
@@ -76,6 +77,8 @@
  */
 static struct argp_option options[] = {
     { "mapsize", 'm', "MAPSIZE", 0, "Mmap size in MiB" },
+    { "setmem", 'M', "SETMEM", 0, "node mask" },
+    { "bind", 'b', "MBIND", 0, "node mask" },
     { "setsize", 's', "SETSIZE", 0, "Working set size in MiB" },
     { "access", 'a', "ACCESS", 0, "Specify access method. e.g., touch, histo" },
     { "pattern", 'p', "PATTERN", 0, "Specify PATTERN. e.g, linear, uniform(def), pareto, normal" },
@@ -115,6 +118,8 @@ __attribute__((cold))
 void set_default_params(parameters* p)
 {
     p->duration_sec = 120;  // two minutes.. but user must supply duration.
+    p->setmem = 0;
+    p->mbind = 0;
     p->mapsize_mib = 256;
     p->setsize_mib = 128;
     p->access = &histogram_access;
@@ -211,6 +216,12 @@ error_t parse_opt(int key, char* arg, struct argp_state* state)
     case 's':
     	if (arg) param->setsize_mib = atoi(arg);
     	break;
+    case 'M':
+	if (arg) param->setmem = atoi(arg);
+	break;
+    case 'b':
+	if (arg) param->mbind = atoi(arg);
+	break;
     case 'i':
     	param->init_garbage = 1;
     	break;
@@ -1094,6 +1105,21 @@ int main(int argc, char** argv)
     params_parsing(argc, argv);
     disable_core_dump();
 
+    if (params.setmem){
+        ret = set_mempolicy((MPOL_PREFERRED_MANY | MPOL_F_NUMA_BALANCING), &params.setmem, 10);
+	if (ret < 0){
+		printf ("Set Mempolicy Failed\n");
+			return 0;
+	}
+    }
+
+    if (params.mbind){
+        ret = set_mempolicy((MPOL_BIND), &params.mbind, 10);
+	if (ret < 0){
+		printf ("Set Mempolicy Failed\n");
+			return 0;
+	}
+    }
 //test_parse_numa_option();
 #ifndef PPC
     if (!is_tsc_invariant()) {

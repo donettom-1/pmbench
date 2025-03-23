@@ -87,6 +87,8 @@ struct affy_node;
  */ 
 typedef struct parameters {
     int duration_sec;	//benchmark duration in seconds (excluding warmup)
+    unsigned long  setmem;
+    unsigned long mbind;
     int mapsize_mib;	// anonymous mmap size in megabytes
     int setsize_mib;	// 'working set' size in megabytes (depends on pattern)
     access_fn_set* access;  	// access method (touch or histo)

@@ -70,7 +70,7 @@ endif
 # uncomment below to compile-in multi-threaded benchmark
 #CFLAGS_LINUX += -DPMB_THREAD=1 -pthread
 CFLAGS_LINUX += -DPPC=1 -pthread
-LFLAGS_LINUX += -pthread
+LFLAGS_LINUX += -pthread -lnuma
 # uncomment below to compile-in numa affinityset. Requires threading.
 #CFLAGS_LINUX += -DPMB_NUMA=1 
 #LFLAGS_LINUX += -lnuma
